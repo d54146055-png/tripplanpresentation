@@ -1,10 +1,9 @@
 
-
 import React, { useState } from 'react';
 import { ItineraryItem, TripSettings } from '../types';
 import { Plus, Trash2, MapPin, Sparkles, Cloud, Sun, CloudRain, Snowflake, Wand2, ExternalLink, Loader2 } from 'lucide-react';
 import { generateItinerarySuggestion, generateNextActivitySuggestion, getCoordinatesForLocation } from '../services/geminiService';
-import { addItineraryItem, deleteItineraryItem, updateItineraryItem } from '../services/firebaseService';
+import { addItineraryItem, deleteItineraryItem, updateItineraryItem } from '../services/storageService';
 
 interface Props {
   items: ItineraryItem[];
@@ -83,12 +82,19 @@ const ItineraryView: React.FC<Props> = ({ items, settings }) => {
   };
 
   const openMap = (location: string) => {
-    // Generic map search query
-    const query = encodeURIComponent(`${location} ${settings.destination}`);
-    // Fallback to Google Maps for generic locations if Naver isn't preferred
-    // For now, let's stick to Google Maps for international support
-    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
-    window.open(url, '_blank');
+    const dest = settings.destination.toLowerCase();
+    const isKorea = dest.includes('korea') || dest.includes('seoul') || dest.includes('busan') || dest.includes('jeju');
+
+    if (isKorea) {
+        // Use Naver Map
+        const url = `https://map.naver.com/v5/search/${encodeURIComponent(location)}`;
+        window.open(url, '_blank');
+    } else {
+        // Use Google Maps with context
+        const query = encodeURIComponent(`${location} ${settings.destination}`);
+        const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+        window.open(url, '_blank');
+    }
   };
 
   const getWeatherIcon = (condition?: string) => {

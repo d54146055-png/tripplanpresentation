@@ -1,10 +1,9 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Navigation, X, Search, Map as MapIcon, Crosshair, Sparkles, ArrowRight, TrainFront, Bus, Footprints, Loader2, Plus, Calendar, List, Eye, EyeOff } from 'lucide-react';
+import { MapPin, Navigation, X, Search, Map as MapIcon, Crosshair, Sparkles, ArrowRight, TrainFront, Bus, Footprints, Loader2, Plus, Calendar, List, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import { parseLocationsFromText, calculateRoute, RouteOption } from '../services/geminiService';
 import { ItineraryItem, MapMarker, TripSettings } from '../types';
-import { subscribeToMarkers, addMapMarker, clearAllMarkers } from '../services/firebaseService';
+import { subscribeToMarkers, addMapMarker, clearAllMarkers } from '../services/storageService';
 
 // Use L as a global variable from the script tag in index.html
 declare const L: any;
@@ -49,6 +48,12 @@ const MapView: React.FC<Props> = ({ itineraryItems = [], settings }) => {
   const markersRef = useRef<any[]>([]);
   const userMarkerRef = useRef<any>(null);
   const polylineRef = useRef<any>(null);
+
+  // Helper to detect if we are in Korea
+  const isKoreaTrip = () => {
+      const dest = settings.destination.toLowerCase();
+      return dest.includes('korea') || dest.includes('seoul') || dest.includes('busan') || dest.includes('jeju');
+  };
 
   // Initialize Map
   useEffect(() => {
@@ -109,6 +114,9 @@ const MapView: React.FC<Props> = ({ itineraryItems = [], settings }) => {
     if (visibleLocations.length === 0) return;
 
     const bounds = L.latLngBounds([]);
+    const isKorea = isKoreaTrip();
+    const mapBtnLabel = isKorea ? "Naver Map" : "Google Maps";
+    const mapBtnColor = isKorea ? "bg-[#03C75A]" : "bg-cocoa"; // Naver Green vs Cocoa
 
     visibleLocations.forEach((loc) => {
       const bgColor = loc.type === 'itinerary' && loc.day 
@@ -152,8 +160,8 @@ const MapView: React.FC<Props> = ({ itineraryItems = [], settings }) => {
               <button id="set-start-${loc.id}" class="flex-1 bg-cream text-cocoa border border-sand text-[10px] font-bold py-2 rounded-lg">Set Start</button>
               <button id="set-end-${loc.id}" class="flex-1 bg-cream text-cocoa border border-sand text-[10px] font-bold py-2 rounded-lg">Set End</button>
            </div>
-           <button id="gmap-${loc.id}" class="w-full bg-cocoa text-white text-xs font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all">
-             Google Maps
+           <button id="external-map-${loc.id}" class="w-full ${mapBtnColor} text-white text-xs font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all">
+             ${mapBtnLabel}
            </button>
         </div>
       `;
@@ -161,8 +169,8 @@ const MapView: React.FC<Props> = ({ itineraryItems = [], settings }) => {
       marker.bindPopup(popupContent, { minWidth: 180 });
       
       marker.on('popupopen', () => {
-        const btnMap = document.getElementById(`gmap-${loc.id}`);
-        if (btnMap) btnMap.onclick = () => openGoogleMap(loc.name);
+        const btnMap = document.getElementById(`external-map-${loc.id}`);
+        if (btnMap) btnMap.onclick = () => openSmartMap(loc.name);
         
         const btnStart = document.getElementById(`set-start-${loc.id}`);
         if (btnStart) btnStart.onclick = () => { setRouteStart(loc.name); setShowRoutePanel(true); marker.closePopup(); };
@@ -178,7 +186,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [], settings }) => {
     if (visibleLocations.length > 0) {
       mapRef.current.fitBounds(bounds, { padding: [80, 80], maxZoom: 15 });
     }
-  }, [locations, hiddenDays]);
+  }, [locations, hiddenDays, settings.destination]); // Re-render markers if destination settings change
 
   const toggleDayVisibility = (day: number | 'search') => {
       setHiddenDays(prev => {
@@ -276,17 +284,44 @@ const MapView: React.FC<Props> = ({ itineraryItems = [], settings }) => {
     setIsCalculatingRoute(false);
   };
 
-  const openGoogleMap = (name: string) => {
-    const query = encodeURIComponent(`${name} ${settings.destination}`);
-    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
-    window.open(url, '_blank');
+  // SMART MAP LINK: Naver for Korea, Google for RoW
+  const openSmartMap = (name: string) => {
+    if (isKoreaTrip()) {
+        const url = `https://map.naver.com/v5/search/${encodeURIComponent(name)}`;
+        window.open(url, '_blank');
+    } else {
+        const query = encodeURIComponent(`${name} ${settings.destination}`);
+        const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+        window.open(url, '_blank');
+    }
   };
 
-  const openNaverRoute = (mode: string) => {
-    // Naver route is very specific to Korea. 
-    // Fallback to Google Maps Directions for international
-    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(routeStart)}&destination=${encodeURIComponent(routeEnd)}&travelmode=${mode === 'walk' ? 'walking' : 'transit'}`;
-    window.open(url, '_blank');
+  // SMART ROUTE LINK
+  const openSmartRoute = (mode: string) => {
+    if (isKoreaTrip()) {
+         // Naver directions URL (Simplified, Naver web routing is tricky without exact IDs, using search fallback)
+         const url = `https://map.naver.com/v5/search/${encodeURIComponent(routeStart)}/direction/${encodeURIComponent(routeStart)}/${encodeURIComponent(routeEnd)}`;
+         // Note: Naver direction URL usually requires IDs. A safer fallback for web is just opening the map.
+         // Let's try the PC map direction format which sometimes works with text queries or fallback to Google since Naver is hard to deep link without coordinates
+         // Actually, Google Maps transit covers Korea decent enough for foreigners if Naver deep linking fails. 
+         // But let's stick to Naver Search as primary "Map" button. For route, Google might be safer for 'web' query param support unless we use lat/lng.
+         // However, prompt asked for Naver.
+         
+         // Using Naver Map Direction URL with coordinates if available from our markers
+         const startLoc = locations.find(l => l.name === routeStart);
+         const endLoc = locations.find(l => l.name === routeEnd);
+         
+         if (startLoc && endLoc) {
+             const url = `http://app.map.naver.com/launch/public/route/public?sname=${encodeURIComponent(routeStart)}&slng=${startLoc.lng}&slat=${startLoc.lat}&dname=${encodeURIComponent(routeEnd)}&dlng=${endLoc.lng}&dlat=${endLoc.lat}&appname=SeoulMate`;
+             window.open(url, '_blank');
+         } else {
+             // Fallback to text search on Naver
+             window.open(`https://map.naver.com/v5/search/${encodeURIComponent(routeEnd)}`, '_blank');
+         }
+    } else {
+        const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(routeStart)}&destination=${encodeURIComponent(routeEnd)}&travelmode=${mode === 'walk' ? 'walking' : 'transit'}`;
+        window.open(url, '_blank');
+    }
   };
 
   const locateMe = () => {
@@ -542,7 +577,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [], settings }) => {
                 {routeOptions.map((opt, i) => (
                   <div 
                     key={i} 
-                    onClick={() => openNaverRoute(opt.type)}
+                    onClick={() => openSmartRoute(opt.type)}
                     className="bg-cream/30 hover:bg-cream/70 p-3 rounded-xl border border-sand/30 flex items-center justify-between cursor-pointer transition-all group"
                   >
                     <div className="flex items-center gap-3">

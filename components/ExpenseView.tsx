@@ -1,9 +1,8 @@
 
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Expense, User, TripSettings } from '../types';
 import { Plus, DollarSign, Wallet, ArrowRight, Trash2, RefreshCw, UserCog, Check, X, ClipboardList, CheckSquare, Square, AlertCircle } from 'lucide-react';
-import { addExpenseItem, addUser, deleteExpenseItem, updateUser, deleteUser } from '../services/firebaseService';
+import { addExpenseItem, addUser, deleteExpenseItem, updateUser, deleteUser } from '../services/storageService';
 
 interface Props {
   expenses: Expense[];

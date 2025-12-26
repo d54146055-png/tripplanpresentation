@@ -1,10 +1,9 @@
 
-
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, ItineraryItem, TripSettings } from '../types';
 import { Send, Map, Bot, User as UserIcon, Loader2, MapPin, CalendarPlus, Check } from 'lucide-react';
 import { chatWithTravelGuide, parseActivityFromText } from '../services/geminiService';
-import { subscribeToChat, sendChatMessage, addItineraryItem } from '../services/firebaseService';
+import { subscribeToChat, sendChatMessage, addItineraryItem } from '../services/storageService';
 
 interface Props {
     settings: TripSettings;

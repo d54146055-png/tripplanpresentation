@@ -1,43 +1,61 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { TripSettings } from '../types';
 import { detectDestinationInfo } from '../services/geminiService';
-import { updateTripSettings } from '../services/firebaseService';
-import { Plane, Calendar, Globe, Coins, CheckCircle, Loader2, ArrowRight, MapPin } from 'lucide-react';
+import { updateTripSettings, importTripData } from '../services/storageService';
+import { Plane, Calendar, Globe, Coins, CheckCircle, Loader2, ArrowRight, MapPin, Upload } from 'lucide-react';
 
 interface Props {
   onComplete: (settings: TripSettings) => void;
 }
 
 const SetupWizard: React.FC<Props> = ({ onComplete }) => {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0); // 0: Destination, 1: Confirmation
+  
   const [inputDestination, setInputDestination] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [detectedSettings, setDetectedSettings] = useState<Partial<TripSettings> | null>(null);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+        const success = await importTripData(e.target.files[0]);
+        if (success) {
+            window.location.reload();
+        }
+    }
+  };
 
   const handleAnalyze = async () => {
     if (!inputDestination || !startDate || !endDate) return;
     setIsAnalyzing(true);
+    
     const info = await detectDestinationInfo(inputDestination);
+    
     if (info) {
         setDetectedSettings({
             ...info,
             startDate,
             endDate
         });
-        setStep(2);
+        setStep(1);
     } else {
-        alert("Could not detect destination. Please try again (e.g., 'Osaka, Japan').");
+        alert("Could not detect destination details. Please try checking your spelling.");
     }
     setIsAnalyzing(false);
   };
 
   const handleConfirm = async () => {
       if (detectedSettings && detectedSettings.destination) {
-          const finalSettings = detectedSettings as TripSettings;
+          const finalSettings = { ...detectedSettings } as TripSettings;
           await updateTripSettings(finalSettings);
           onComplete(finalSettings);
       }
@@ -49,7 +67,8 @@ const SetupWizard: React.FC<Props> = ({ onComplete }) => {
       <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[30%] bg-sand rounded-full opacity-20 blur-3xl"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[30%] bg-accent rounded-full opacity-10 blur-3xl"></div>
 
-      {step === 1 && (
+      {/* Step 0: Destination Input (Now the default start screen) */}
+      {step === 0 && (
           <div className="w-full max-w-sm animate-[float_0.5s_ease-out]">
             <div className="text-center mb-10">
                 <div className="w-20 h-20 bg-cocoa text-white rounded-3xl mx-auto flex items-center justify-center shadow-xl mb-4 transform -rotate-6">
@@ -102,11 +121,23 @@ const SetupWizard: React.FC<Props> = ({ onComplete }) => {
                     {isAnalyzing ? <Loader2 className="animate-spin" /> : <ArrowRight />}
                     {isAnalyzing ? "Analyzing..." : "Next"}
                 </button>
+                
+                {/* Import Option moved here */}
+                <div>
+                    <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
+                    <button 
+                        onClick={handleImportClick}
+                        className="w-full text-center text-xs text-gray-400 font-bold hover:text-cocoa flex items-center justify-center gap-1 mt-2"
+                    >
+                        <Upload size={10} /> Restore from backup
+                    </button>
+                </div>
             </div>
           </div>
       )}
 
-      {step === 2 && detectedSettings && (
+      {/* Step 1: Confirmation */}
+      {step === 1 && detectedSettings && (
           <div className="w-full max-w-sm animate-[float_0.5s_ease-out]">
              <div className="text-center mb-8">
                 <h2 className="text-2xl font-serif font-bold text-cocoa">Trip Configured!</h2>
@@ -152,7 +183,7 @@ const SetupWizard: React.FC<Props> = ({ onComplete }) => {
                     Start Exploring
                 </button>
                 
-                <button onClick={() => setStep(1)} className="w-full text-center text-gray-400 text-xs font-bold hover:text-cocoa">Back</button>
+                <button onClick={() => setStep(0)} className="w-full text-center text-gray-400 text-xs font-bold hover:text-cocoa">Back</button>
              </div>
           </div>
       )}

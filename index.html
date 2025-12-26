@@ -58,6 +58,14 @@
         50% { transform: translateY(-5px); }
         100% { transform: translateY(0px); }
       }
+      @keyframes slideUp {
+        from { transform: translateY(100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      @keyframes slideDown {
+        from { transform: translateY(-20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
       
       /* Leaflet Customization */
       .leaflet-container {
@@ -98,9 +106,7 @@
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
     "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
-    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js",
-    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/"
+    "firebase/": "https://esm.sh/firebase@^12.7.0/"
   }
 }
 </script>

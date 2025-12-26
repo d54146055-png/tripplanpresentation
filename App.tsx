@@ -1,14 +1,13 @@
 
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppTab, Expense, ItineraryItem, User, TripSettings } from './types';
 import ItineraryView from './components/ItineraryView';
 import ExpenseView from './components/ExpenseView';
 import ChatView from './components/ChatView';
 import MapView from './components/MapView';
 import SetupWizard from './components/SetupWizard';
-import { Calendar, CreditCard, MessageCircle, MapPin, Users, Loader2 } from 'lucide-react';
-import { subscribeToExpenses, subscribeToItinerary, subscribeToUsers, subscribeToTripSettings } from './services/firebaseService';
+import { Calendar, CreditCard, MessageCircle, MapPin, Users, Loader2, Download, Upload } from 'lucide-react';
+import { subscribeToExpenses, subscribeToItinerary, subscribeToUsers, subscribeToTripSettings, exportTripData, importTripData } from './services/storageService';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>(AppTab.ITINERARY);
@@ -19,6 +18,8 @@ const App: React.FC = () => {
   const [itineraryItems, setItineraryItems] = useState<ItineraryItem[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   // Handle Data Sync
   useEffect(() => {
@@ -40,7 +41,14 @@ const App: React.FC = () => {
       unsubscribeUsers();
     };
   }, []);
-
+  
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if(e.target.files && e.target.files[0]) {
+          const success = await importTripData(e.target.files[0]);
+          if(success) alert("Import successful!");
+      }
+  }
+  
   if (isLoadingSettings) {
       return (
           <div className="h-full flex items-center justify-center bg-cream text-cocoa">
@@ -95,6 +103,17 @@ const App: React.FC = () => {
                 {users.length > 0 ? `${users.length} Travelers` : 'My Trip'}
              </p>
           </div>
+        </div>
+        
+        {/* Export / Import Controls */}
+        <div className="pt-2 flex gap-2">
+            <button onClick={exportTripData} className="p-2 bg-white rounded-full shadow-sm text-cocoa hover:text-accent border border-sand/50" title="Export JSON">
+                <Download size={18}/>
+            </button>
+            <button onClick={() => importInputRef.current?.click()} className="p-2 bg-white rounded-full shadow-sm text-cocoa hover:text-accent border border-sand/50" title="Import JSON">
+                <Upload size={18}/>
+            </button>
+            <input type="file" ref={importInputRef} onChange={handleImport} accept=".json" className="hidden"/>
         </div>
       </header>
 
