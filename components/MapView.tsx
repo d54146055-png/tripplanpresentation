@@ -1,8 +1,9 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { MapPin, Navigation, X, Search, Map as MapIcon, Crosshair, Sparkles, ArrowRight, TrainFront, Bus, Footprints, Loader2, Plus, Calendar, List, Eye, EyeOff } from 'lucide-react';
 import { parseLocationsFromText, calculateRoute, RouteOption } from '../services/geminiService';
-import { ItineraryItem, MapMarker } from '../types';
+import { ItineraryItem, MapMarker, TripSettings } from '../types';
 import { subscribeToMarkers, addMapMarker, clearAllMarkers } from '../services/firebaseService';
 
 // Use L as a global variable from the script tag in index.html
@@ -10,6 +11,7 @@ declare const L: any;
 
 interface Props {
   itineraryItems?: ItineraryItem[];
+  settings: TripSettings;
 }
 
 // Color palette for different days
@@ -23,7 +25,7 @@ const DAY_COLORS: Record<number, string> = {
   7: 'bg-indigo-600',
 };
 
-const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
+const MapView: React.FC<Props> = ({ itineraryItems = [], settings }) => {
   const [singleInput, setSingleInput] = useState('');
   const [bulkInput, setBulkInput] = useState('');
   const [locations, setLocations] = useState<MapMarker[]>([]);
@@ -52,10 +54,11 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
+    // Use settings lat/lng for initialization
     mapRef.current = L.map(mapContainerRef.current, {
       zoomControl: false,
       attributionControl: false,
-      center: [37.5665, 126.9780],
+      center: [settings.lat, settings.lng],
       zoom: 13
     });
 
@@ -73,7 +76,14 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
         mapRef.current = null;
       }
     };
-  }, []);
+  }, []); // Run once on mount
+
+  // Update map view if settings change (e.g. reset trip)
+  useEffect(() => {
+      if (mapRef.current && settings.lat && settings.lng) {
+          mapRef.current.setView([settings.lat, settings.lng], 13);
+      }
+  }, [settings.lat, settings.lng]);
 
   // Subscribe to persistent markers
   useEffect(() => {
@@ -132,19 +142,18 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
       popupContent.innerHTML = `
         <div class="mb-2">
             <span class="text-[9px] font-bold px-2 py-0.5 rounded-full text-white ${bgColor}">
-                ${loc.type === 'itinerary' ? 'DAY ' + loc.day + ' 行程' : '搜尋結果'}
+                ${loc.type === 'itinerary' ? 'DAY ' + loc.day + ' Plan' : 'Search Result'}
             </span>
         </div>
         <h4 class="font-bold text-base mb-1">${loc.name}</h4>
-        <p class="text-xs text-gray-500 mb-4 leading-snug">${loc.description || '首爾旅遊地點'}</p>
+        <p class="text-xs text-gray-500 mb-4 leading-snug">${loc.description || 'Travel Location'}</p>
         <div class="flex flex-col gap-2">
            <div class="flex gap-2">
-              <button id="set-start-${loc.id}" class="flex-1 bg-cream text-cocoa border border-sand text-[10px] font-bold py-2 rounded-lg">設為起點</button>
-              <button id="set-end-${loc.id}" class="flex-1 bg-cream text-cocoa border border-sand text-[10px] font-bold py-2 rounded-lg">設為終點</button>
+              <button id="set-start-${loc.id}" class="flex-1 bg-cream text-cocoa border border-sand text-[10px] font-bold py-2 rounded-lg">Set Start</button>
+              <button id="set-end-${loc.id}" class="flex-1 bg-cream text-cocoa border border-sand text-[10px] font-bold py-2 rounded-lg">Set End</button>
            </div>
-           <button id="naver-${loc.id}" class="w-full bg-cocoa text-white text-xs font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all">
-             <img src="https://map.naver.com/v5/assets/img/favicon/favicon-32x32.png" width="16" class="rounded-sm" />
-             Naver Map 導航
+           <button id="gmap-${loc.id}" class="w-full bg-cocoa text-white text-xs font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all">
+             Google Maps
            </button>
         </div>
       `;
@@ -152,8 +161,8 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
       marker.bindPopup(popupContent, { minWidth: 180 });
       
       marker.on('popupopen', () => {
-        const btnNaver = document.getElementById(`naver-${loc.id}`);
-        if (btnNaver) btnNaver.onclick = () => openNaverMap(loc.name);
+        const btnMap = document.getElementById(`gmap-${loc.id}`);
+        if (btnMap) btnMap.onclick = () => openGoogleMap(loc.name);
         
         const btnStart = document.getElementById(`set-start-${loc.id}`);
         if (btnStart) btnStart.onclick = () => { setRouteStart(loc.name); setShowRoutePanel(true); marker.closePopup(); };
@@ -183,7 +192,8 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
   const handleSingleAdd = async () => {
     if (!singleInput.trim()) return;
     setIsProcessing(true);
-    const results = await parseLocationsFromText(singleInput);
+    // Parse using current destination settings
+    const results = await parseLocationsFromText(singleInput, settings.destination);
     if (results.length > 0) {
       for (const r of results) {
         await addMapMarker({
@@ -199,13 +209,13 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
 
   const handleImportItinerary = async () => {
     if (!itineraryItems || itineraryItems.length === 0) {
-      alert("目前沒有任何行程可以匯入。");
+      alert("No itinerary items to import.");
       return;
     }
 
     setIsProcessing(true);
     const placesToGeocode = itineraryItems.map(item => `${item.location} (${item.activity})`).join('\n');
-    const geocodedResults = await parseLocationsFromText(`匯入行程地點座標：\n${placesToGeocode}`);
+    const geocodedResults = await parseLocationsFromText(`Import Itinerary:\n${placesToGeocode}`, settings.destination);
 
     if (geocodedResults.length > 0) {
       for (let i = 0; i < geocodedResults.length; i++) {
@@ -227,7 +237,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
   const handleBulkProcess = async () => {
     if (!bulkInput.trim()) return;
     setIsProcessing(true);
-    const results = await parseLocationsFromText(bulkInput);
+    const results = await parseLocationsFromText(bulkInput, settings.destination);
     for (const r of results) {
       await addMapMarker({
         ...r,
@@ -244,7 +254,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
     if (!routeStart || !routeEnd) return;
     setIsCalculatingRoute(true);
     
-    const options = await calculateRoute(routeStart, routeEnd);
+    const options = await calculateRoute(routeStart, routeEnd, settings.destination);
     setRouteOptions(options);
     
     if (mapRef.current) {
@@ -266,20 +276,22 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
     setIsCalculatingRoute(false);
   };
 
-  const openNaverMap = (name: string) => {
-    const query = encodeURIComponent(`${name} 首爾`);
-    const url = `https://map.naver.com/v5/search/${query}`;
+  const openGoogleMap = (name: string) => {
+    const query = encodeURIComponent(`${name} ${settings.destination}`);
+    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
     window.open(url, '_blank');
   };
 
   const openNaverRoute = (mode: string) => {
-    const url = `https://map.naver.com/v5/directions/${encodeURIComponent(routeStart)}/${encodeURIComponent(routeEnd)}/-/transit`;
+    // Naver route is very specific to Korea. 
+    // Fallback to Google Maps Directions for international
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(routeStart)}&destination=${encodeURIComponent(routeEnd)}&travelmode=${mode === 'walk' ? 'walking' : 'transit'}`;
     window.open(url, '_blank');
   };
 
   const locateMe = () => {
     if (!navigator.geolocation) {
-        alert("瀏覽器不支援定位功能");
+        alert("Geolocation not supported");
         return;
     }
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -311,7 +323,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
   };
 
   const handleClearMarkers = async () => {
-    if (confirm("確定要清空地圖上的所有標記嗎？")) {
+    if (confirm("Clear all markers?")) {
       await clearAllMarkers();
     }
   };
@@ -336,7 +348,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
             <input 
               type="text" 
               className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-cocoa placeholder-latte/60"
-              placeholder="搜尋地點並標記..."
+              placeholder={`Search in ${settings.destination}...`}
               value={singleInput}
               onChange={(e) => setSingleInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSingleAdd()}
@@ -358,7 +370,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
           onClick={handleImportItinerary}
           disabled={isProcessing}
           className="pointer-events-auto w-12 h-12 bg-cocoa text-white rounded-2xl shadow-xl border border-cocoa flex items-center justify-center active:scale-95 transition-all disabled:opacity-50"
-          title="匯入行程"
+          title="Import Itinerary"
         >
           {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <Calendar size={22} />}
         </button>
@@ -366,7 +378,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
         <button 
           onClick={() => setShowLocationsList(!showLocationsList)}
           className={`pointer-events-auto w-12 h-12 rounded-2xl shadow-xl border border-sand flex items-center justify-center transition-all active:scale-95 relative ${showLocationsList ? 'bg-latte text-white' : 'bg-white/90 text-cocoa'}`}
-          title="標記清單"
+          title="Markers List"
         >
           <List size={22} />
           {locations.length > 0 && (
@@ -379,7 +391,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
         <button 
           onClick={() => setShowRoutePanel(!showRoutePanel)}
           className={`pointer-events-auto w-12 h-12 rounded-2xl shadow-xl border border-sand flex items-center justify-center transition-all active:scale-95 ${showRoutePanel ? 'bg-accent text-white' : 'bg-white/90 text-cocoa'}`}
-          title="路徑規劃"
+          title="Route Planner"
         >
           <Navigation size={22} />
         </button>
@@ -387,14 +399,14 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
         <button 
           onClick={() => setShowBulkInput(true)}
           className="pointer-events-auto w-12 h-12 bg-white/90 rounded-2xl shadow-xl border border-sand flex items-center justify-center text-cocoa active:scale-95 transition-all"
-          title="AI 批次匯入"
+          title="AI Bulk Import"
         >
           <Sparkles size={22} className="text-accent" />
         </button>
         <button 
           onClick={locateMe}
           className="pointer-events-auto w-12 h-12 bg-white/90 rounded-2xl shadow-xl border border-sand flex items-center justify-center text-cocoa active:scale-95 transition-all"
-          title="我的位置"
+          title="Locate Me"
         >
           <Crosshair size={22} />
         </button>
@@ -406,9 +418,9 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
           <div className="bg-white/95 backdrop-blur-xl rounded-[2rem] shadow-2xl p-6 pointer-events-auto border border-sand w-full animate-[slideUp_0.3s]">
             
             <div className="flex justify-between items-center mb-4">
-              <h4 className="font-bold text-cocoa flex items-center gap-2"><MapPin size={16} /> 標記地點清單</h4>
+              <h4 className="font-bold text-cocoa flex items-center gap-2"><MapPin size={16} /> Locations</h4>
               <div className="flex items-center gap-3">
-                 <button onClick={handleClearMarkers} className="text-[10px] font-bold text-accent px-2 py-1 bg-accent/10 rounded-lg">清空地圖</button>
+                 <button onClick={handleClearMarkers} className="text-[10px] font-bold text-accent px-2 py-1 bg-accent/10 rounded-lg">Clear All</button>
                  <button onClick={() => setShowLocationsList(false)}><X size={18} className="text-gray-400"/></button>
               </div>
             </div>
@@ -443,7 +455,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
                             listSelectedDay === 'search' ? 'bg-accent text-white' : 'bg-cream text-latte'
                         }`}
                     >
-                        手動
+                        Search
                         {!hiddenDays.has('search') && <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-white bg-accent"></div>}
                     </button>
                     <button 
@@ -458,7 +470,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
             <div className="max-h-56 overflow-y-auto no-scrollbar space-y-2 mt-2">
                {filteredListLocations.length === 0 ? (
                  <div className="py-10 text-center">
-                   <p className="text-xs text-gray-400">本類別目前無標記</p>
+                   <p className="text-xs text-gray-400">No markers for this category.</p>
                  </div>
                ) : (
                  filteredListLocations.map((loc) => (
@@ -478,7 +490,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
             {hiddenDays.has(listSelectedDay) && filteredListLocations.length > 0 && (
                 <div className="mt-4 p-2 bg-accent/5 rounded-xl flex items-center gap-2">
                     <EyeOff size={14} className="text-accent"/>
-                    <p className="text-[10px] text-accent font-bold">目前地圖已隱藏此天數的標記，清單仍可查看。</p>
+                    <p className="text-[10px] text-accent font-bold">Markers hidden on map, visible in list.</p>
                 </div>
             )}
           </div>
@@ -490,7 +502,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
         <div className="absolute inset-x-4 top-24 z-30 max-w-sm mx-auto pointer-events-none">
           <div className="bg-white/95 backdrop-blur-xl rounded-[2rem] shadow-2xl p-6 pointer-events-auto border border-sand w-full animate-[slideDown_0.3s]">
             <div className="flex justify-between items-center mb-4">
-              <h4 className="font-bold text-cocoa flex items-center gap-2"><Navigation size={16} /> 首爾路徑規劃</h4>
+              <h4 className="font-bold text-cocoa flex items-center gap-2"><Navigation size={16} /> Route Finder</h4>
               <button onClick={() => setShowRoutePanel(false)}><X size={18} className="text-gray-400"/></button>
             </div>
             
@@ -498,7 +510,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
               <div className="relative">
                 <div className="absolute left-3 top-3.5 w-2 h-2 rounded-full border-2 border-latte"></div>
                 <input 
-                  placeholder="起點 (例如: 景福宮)" 
+                  placeholder="Start (e.g. Hotel)" 
                   className="w-full pl-9 pr-4 py-3 bg-cream/50 rounded-xl text-sm text-cocoa focus:outline-none border-b border-sand"
                   value={routeStart}
                   onChange={(e) => setRouteStart(e.target.value)}
@@ -507,7 +519,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
               <div className="relative">
                 <div className="absolute left-3 top-3.5 w-2 h-2 bg-accent rounded-sm"></div>
                 <input 
-                  placeholder="終點 (例如: 弘大)" 
+                  placeholder="End (e.g. Museum)" 
                   className="w-full pl-9 pr-4 py-3 bg-cream/50 rounded-xl text-sm text-cocoa focus:outline-none"
                   value={routeEnd}
                   onChange={(e) => setRouteEnd(e.target.value)}
@@ -521,12 +533,12 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
               className="w-full bg-cocoa text-white py-3 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isCalculatingRoute ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} className="text-accent"/>}
-              <span>AI 估算交通時間</span>
+              <span>AI Estimate</span>
             </button>
 
             {routeOptions.length > 0 && (
               <div className="mt-5 space-y-2 max-h-60 overflow-y-auto no-scrollbar">
-                <p className="text-[10px] font-bold text-latte uppercase tracking-widest px-1">交通工具建議</p>
+                <p className="text-[10px] font-bold text-latte uppercase tracking-widest px-1">Options</p>
                 {routeOptions.map((opt, i) => (
                   <div 
                     key={i} 
@@ -541,7 +553,7 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
                       </div>
                       <div>
                         <p className="text-xs font-bold text-cocoa">{opt.summary}</p>
-                        <p className="text-[10px] text-latte">預計 {opt.duration}</p>
+                        <p className="text-[10px] text-latte">~{opt.duration}</p>
                       </div>
                     </div>
                     <ArrowRight size={14} className="text-sand group-hover:text-accent transition-colors" />
@@ -558,16 +570,16 @@ const MapView: React.FC<Props> = ({ itineraryItems = [] }) => {
         <div className="fixed inset-0 z-50 bg-cocoa/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] w-full max-w-sm p-6 shadow-2xl animate-[float_0.3s_ease-out]">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-cocoa flex items-center gap-2"><Sparkles size={18} className="text-accent"/> AI 批次景點標記</h3>
+              <h3 className="font-bold text-cocoa flex items-center gap-2"><Sparkles size={18} className="text-accent"/> AI Bulk Marker</h3>
               <button onClick={() => setShowBulkInput(false)} className="text-gray-400 hover:text-cocoa"><X size={20}/></button>
             </div>
             <textarea
               className="w-full h-40 p-4 bg-cream rounded-2xl border-none focus:ring-2 focus:ring-cocoa text-sm mb-4 resize-none text-cocoa"
-              placeholder="貼上長篇行程文字..."
+              placeholder="Paste long text with location names..."
               value={bulkInput}
               onChange={(e) => setBulkInput(e.target.value)}
             />
-            <button onClick={handleBulkProcess} className="w-full bg-cocoa text-white py-4 rounded-2xl font-bold text-sm">標記所有地點</button>
+            <button onClick={handleBulkProcess} className="w-full bg-cocoa text-white py-4 rounded-2xl font-bold text-sm">Mark All Locations</button>
           </div>
         </div>
       )}

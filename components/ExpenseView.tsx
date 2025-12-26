@@ -1,15 +1,17 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
-import { Expense, User } from '../types';
+import { Expense, User, TripSettings } from '../types';
 import { Plus, DollarSign, Wallet, ArrowRight, Trash2, RefreshCw, UserCog, Check, X, ClipboardList, CheckSquare, Square, AlertCircle } from 'lucide-react';
 import { addExpenseItem, addUser, deleteExpenseItem, updateUser, deleteUser } from '../services/firebaseService';
 
 interface Props {
   expenses: Expense[];
   users: User[];
+  settings: TripSettings;
 }
 
-const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
+const ExpenseView: React.FC<Props> = ({ expenses, users, settings }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
   
@@ -21,9 +23,8 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
   const [editingName, setEditingName] = useState('');
   
   const [converterAmount, setConverterAmount] = useState<string>('');
-  const [exchangeRate] = useState(0.024); // 1 KRW to TWD
   
-  const convertedValue = converterAmount ? (parseFloat(converterAmount) * exchangeRate).toFixed(0) : '0';
+  const convertedValue = converterAmount ? (parseFloat(converterAmount) * settings.currencyRate).toFixed(2) : '0';
 
   useEffect(() => {
      if (users.length > 0) {
@@ -32,9 +33,8 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
      }
   }, [users.length, isModalOpen]);
 
-  // Robust Calculations for AI Studio
+  // Robust Calculations
   const calculations = useMemo(() => {
-    // Return default if no users to prevent NaN
     if (!users || users.length === 0) {
         return { debts: [], balances: {}, totalPaid: {}, totalShare: {} };
     }
@@ -53,7 +53,6 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
       const paidBy = exp.payer;
       const amount = Number(exp.amount) || 0;
       
-      // Filter involved to only include users that still exist
       const validInvolved = (exp.involved || []).filter(name => users.some(u => u.name === name));
       const splitAmong = validInvolved.length > 0 ? validInvolved : users.map(u => u.name);
       
@@ -122,7 +121,7 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
       setIsModalOpen(false);
       setNewExpense({ amount: 0, payer: users[0]?.name });
     } else if (selectedInvolved.length === 0) {
-        alert("請至少選擇一位參與分帳的人員。");
+        alert("Select at least one person.");
     }
   };
 
@@ -132,12 +131,12 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
       {/* Currency Converter */}
       <div className="bg-white rounded-3xl p-5 shadow-sm border border-sand">
         <div className="flex items-center justify-between mb-3 text-latte text-xs font-bold uppercase">
-           <span>匯率快換</span>
-           <span className="flex items-center"><RefreshCw size={10} className="mr-1"/> 1 KRW ≈ {exchangeRate} TWD</span>
+           <span>Quick Convert</span>
+           <span className="flex items-center"><RefreshCw size={10} className="mr-1"/> 1 {settings.currencyCode} ≈ {settings.currencyRate}</span>
         </div>
         <div className="flex items-center gap-4">
            <div className="flex-1">
-             <div className="text-xs text-gray-400 mb-1">韓幣 (₩)</div>
+             <div className="text-xs text-gray-400 mb-1">{settings.currencyCode}</div>
              <input 
                 type="number" 
                 value={converterAmount}
@@ -148,7 +147,7 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
            </div>
            <ArrowRight className="text-sand" />
            <div className="flex-1">
-             <div className="text-xs text-gray-400 mb-1">台幣 ($)</div>
+             <div className="text-xs text-gray-400 mb-1">Home (Approx)</div>
              <div className="w-full bg-cocoa p-2 rounded-xl font-bold text-white text-lg flex items-center h-[44px]">
                 {Number(convertedValue).toLocaleString()}
              </div>
@@ -160,8 +159,8 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
       <div className="bg-gradient-to-br from-cocoa to-[#4E342E] rounded-[2rem] p-6 text-white shadow-xl relative">
         <div className="flex justify-between items-start">
             <div>
-                <p className="text-sand text-sm font-medium mb-1 opacity-80">總花費 (Total)</p>
-                <h2 className="text-4xl font-serif font-bold tracking-tight">₩ {totalSpent.toLocaleString()}</h2>
+                <p className="text-sand text-sm font-medium mb-1 opacity-80">Total Spent</p>
+                <h2 className="text-4xl font-serif font-bold tracking-tight">{settings.currencyCode} {totalSpent.toLocaleString()}</h2>
             </div>
             <button onClick={() => setIsSettlementOpen(true)} className="bg-white/10 hover:bg-white/20 p-2 rounded-xl backdrop-blur-sm">
                 <ClipboardList size={20} className="text-sand" />
@@ -178,7 +177,7 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
             </div>
             
             <div className="flex bg-white/10 rounded-full p-1 pl-3 items-center backdrop-blur-sm">
-                <input className="bg-transparent text-white text-xs w-16 focus:outline-none placeholder-white/50" placeholder="新增人名..." value={newUser} onChange={e => setNewUser(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddUser()} />
+                <input className="bg-transparent text-white text-xs w-16 focus:outline-none placeholder-white/50" placeholder="New Name..." value={newUser} onChange={e => setNewUser(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddUser()} />
                 <button onClick={handleAddUser} className="bg-white text-cocoa rounded-full p-1"><Plus size={12} /></button>
             </div>
         </div>
@@ -188,12 +187,12 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
       {users.length === 0 ? (
           <div className="bg-white rounded-3xl p-8 text-center border border-dashed border-sand">
               <AlertCircle className="mx-auto mb-3 text-latte" size={32} />
-              <p className="text-sm text-gray-400">請先在上方點擊「+」新增旅伴<br/>才能開始記錄分帳喔！</p>
+              <p className="text-sm text-gray-400">Add travelers above<br/>to start tracking!</p>
           </div>
       ) : calculations.debts.length > 0 && (
         <div className="bg-white rounded-3xl p-5 shadow-sm border border-sand">
            <h3 className="text-cocoa font-bold mb-4 flex items-center text-xs uppercase">
-             <Wallet className="mr-2 text-latte" size={16}/> 結算建議 (Settlement)
+             <Wallet className="mr-2 text-latte" size={16}/> Settlement
            </h3>
            <div className="space-y-3">
              {calculations.debts.map((d, i) => (
@@ -203,7 +202,7 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
                    <ArrowRight size={14} className="text-latte" />
                    <span className="font-bold text-cocoa">{d.to}</span>
                  </div>
-                 <span className="font-bold text-accent">₩ {d.amount.toLocaleString()}</span>
+                 <span className="font-bold text-accent">{settings.currencyCode} {d.amount.toLocaleString()}</span>
                </div>
              ))}
            </div>
@@ -212,9 +211,9 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
 
       {/* Recent Expenses */}
       <div className="space-y-4">
-        <h3 className="text-cocoa font-bold ml-1 text-sm uppercase">最近支出</h3>
+        <h3 className="text-cocoa font-bold ml-1 text-sm uppercase">Recent Expenses</h3>
         {expenses.length === 0 ? (
-            <div className="text-center py-8 text-gray-400 bg-white rounded-3xl border border-dashed border-sand text-sm">暫無花費記錄</div>
+            <div className="text-center py-8 text-gray-400 bg-white rounded-3xl border border-dashed border-sand text-sm">No expenses yet</div>
         ) : (
             expenses.map(expense => (
                 <div key={expense.id} className="bg-white p-4 rounded-2xl shadow-sm flex items-center justify-between border border-transparent hover:border-sand transition-all">
@@ -225,17 +224,17 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
                         <div>
                             <p className="font-bold text-cocoa text-sm">{expense.description}</p>
                             <div className="flex items-center text-[10px] text-latte gap-2 font-bold">
-                                <span>{expense.payer} 付款</span>
+                                <span>{expense.payer} paid</span>
                                 {expense.involved && expense.involved.length < users.length && (
                                     <span className="bg-sand/30 px-1.5 rounded">
-                                        分帳: {expense.involved.length} 人
+                                        Split: {expense.involved.length}
                                     </span>
                                 )}
                             </div>
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
-                        <span className="font-bold text-cocoa">₩ {Number(expense.amount).toLocaleString()}</span>
+                        <span className="font-bold text-cocoa">{settings.currencyCode} {Number(expense.amount).toLocaleString()}</span>
                         <button onClick={() => deleteExpenseItem(expense.id)} className="text-sand hover:text-red-400">
                             <Trash2 size={16} />
                         </button>
@@ -254,19 +253,19 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
       {isModalOpen && (
         <div className="fixed inset-0 bg-cocoa/30 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-[2rem] w-full max-w-sm p-6 shadow-2xl animate-[float_0.3s_ease-out] max-h-[85vh] overflow-y-auto no-scrollbar">
-            <h2 className="text-xl font-serif font-bold text-cocoa mb-6 text-center">新增支出</h2>
+            <h2 className="text-xl font-serif font-bold text-cocoa mb-6 text-center">New Expense</h2>
             <div className="space-y-6">
                <div className="text-center">
-                  <label className="text-[10px] font-bold text-latte uppercase tracking-widest">金額 (KRW)</label>
+                  <label className="text-[10px] font-bold text-latte uppercase tracking-widest">Amount ({settings.currencyCode})</label>
                   <input type="number" className="w-full text-4xl font-serif font-bold p-2 border-b border-sand focus:outline-none bg-transparent text-center text-cocoa placeholder-sand" placeholder="0" value={newExpense.amount || ''} onChange={e => setNewExpense({...newExpense, amount: Number(e.target.value)})} />
                </div>
                <div>
-                 <label className="text-xs font-bold text-latte uppercase">消費項目</label>
-                 <input type="text" className="w-full p-3 bg-cream rounded-xl mt-2 text-cocoa focus:outline-none" placeholder="例如：晚餐、交通..." value={newExpense.description || ''} onChange={e => setNewExpense({...newExpense, description: e.target.value})} />
+                 <label className="text-xs font-bold text-latte uppercase">Item</label>
+                 <input type="text" className="w-full p-3 bg-cream rounded-xl mt-2 text-cocoa focus:outline-none" placeholder="e.g. Dinner, Taxi..." value={newExpense.description || ''} onChange={e => setNewExpense({...newExpense, description: e.target.value})} />
                </div>
                
                <div>
-                 <label className="text-xs font-bold text-latte uppercase">誰先墊錢？</label>
+                 <label className="text-xs font-bold text-latte uppercase">Who paid?</label>
                  <div className="flex flex-wrap gap-2 mt-2">
                     {users.map(u => (
                         <button key={u.id} onClick={() => setNewExpense({...newExpense, payer: u.name})} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${newExpense.payer === u.name ? 'bg-cocoa text-white' : 'bg-cream text-gray-500'}`}>
@@ -278,9 +277,9 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
 
                <div>
                  <div className="flex justify-between items-center">
-                     <label className="text-xs font-bold text-latte uppercase">分帳對象</label>
+                     <label className="text-xs font-bold text-latte uppercase">Split amongst</label>
                      <button onClick={() => setSelectedInvolved(selectedInvolved.length === users.length ? [] : users.map(u => u.name))} className="text-[10px] text-accent font-bold">
-                        {selectedInvolved.length === users.length ? '取消全選' : '全選'}
+                        {selectedInvolved.length === users.length ? 'Deselect All' : 'Select All'}
                      </button>
                  </div>
                  <div className="grid grid-cols-2 gap-2 mt-2">
@@ -294,8 +293,8 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
                </div>
             </div>
             <div className="flex gap-3 mt-8">
-              <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-latte font-bold">取消</button>
-              <button onClick={handleAddExpense} className="flex-1 py-3 bg-accent text-white rounded-xl font-bold shadow-lg">保存記錄</button>
+              <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-latte font-bold">Cancel</button>
+              <button onClick={handleAddExpense} className="flex-1 py-3 bg-accent text-white rounded-xl font-bold shadow-lg">Save</button>
             </div>
           </div>
         </div>
@@ -306,8 +305,7 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
         <div className="fixed inset-0 bg-cocoa/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-[2rem] w-full max-w-sm p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto no-scrollbar">
                 <button onClick={() => setIsSettlementOpen(false)} className="absolute top-4 right-4 text-gray-400"><X size={24} /></button>
-                <h2 className="text-2xl font-serif font-bold text-cocoa mb-1 text-center">結算報表</h2>
-                <p className="text-center text-xs text-gray-400 mb-6">點算旅程中的每一分錢</p>
+                <h2 className="text-2xl font-serif font-bold text-cocoa mb-1 text-center">Settlement</h2>
                 <div className="space-y-4 mb-8">
                     {users.map(u => {
                         const balance = calculations.balances[u.name] || 0;
@@ -317,12 +315,8 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
                                 <div className="flex justify-between items-center mb-2">
                                     <span className="font-bold text-cocoa">{u.name}</span>
                                     <span className={`text-sm font-bold ${isPositive ? 'text-green-600' : 'text-accent'}`}>
-                                        {isPositive ? '應收' : '應付'} ₩ {Math.abs(Math.round(balance)).toLocaleString()}
+                                        {isPositive ? 'Receives' : 'Owes'} {settings.currencyCode} {Math.abs(Math.round(balance)).toLocaleString()}
                                     </span>
-                                </div>
-                                <div className="flex text-[10px] text-gray-500 justify-between bg-white p-2 rounded-lg">
-                                    <span>累計付款: ₩ {Math.round(calculations.totalPaid[u.name] || 0).toLocaleString()}</span>
-                                    <span>累計應付: ₩ {Math.round(calculations.totalShare[u.name] || 0).toLocaleString()}</span>
                                 </div>
                             </div>
                         );
@@ -337,13 +331,13 @@ const ExpenseView: React.FC<Props> = ({ expenses, users }) => {
           <div className="fixed inset-0 bg-cocoa/30 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className="bg-white rounded-[2rem] w-full max-w-xs p-6 shadow-2xl">
                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-bold text-cocoa flex items-center"><UserCog size={18} className="mr-2"/> 編輯成員</h2>
+                    <h2 className="text-lg font-bold text-cocoa flex items-center"><UserCog size={18} className="mr-2"/> Edit User</h2>
                     <button onClick={() => setSelectedUser(null)}><X size={18} className="text-gray-400"/></button>
                  </div>
                  <input type="text" value={editingName} onChange={(e) => setEditingName(e.target.value)} className="w-full p-3 bg-cream rounded-xl font-bold text-center focus:outline-none" />
                  <div className="flex flex-col gap-2 mt-6">
-                    <button onClick={async () => { if (selectedUser && editingName.trim()) { await updateUser(selectedUser.id, editingName.trim()); setSelectedUser(null); } }} className="w-full py-3 bg-cocoa text-white rounded-xl font-bold flex items-center justify-center"><Check size={16} className="mr-2" /> 保存修改</button>
-                    <button onClick={async () => { if (selectedUser && confirm(`確定要移除 ${selectedUser.name} 嗎？`)) { await deleteUser(selectedUser.id); setSelectedUser(null); } }} className="w-full py-3 bg-white border border-red-100 text-red-400 rounded-xl font-bold flex items-center justify-center"><Trash2 size={16} className="mr-2" /> 移除成員</button>
+                    <button onClick={async () => { if (selectedUser && editingName.trim()) { await updateUser(selectedUser.id, editingName.trim()); setSelectedUser(null); } }} className="w-full py-3 bg-cocoa text-white rounded-xl font-bold flex items-center justify-center"><Check size={16} className="mr-2" /> Save</button>
+                    <button onClick={async () => { if (selectedUser && confirm(`Remove ${selectedUser.name}?`)) { await deleteUser(selectedUser.id); setSelectedUser(null); } }} className="w-full py-3 bg-white border border-red-100 text-red-400 rounded-xl font-bold flex items-center justify-center"><Trash2 size={16} className="mr-2" /> Remove</button>
                  </div>
              </div>
           </div>

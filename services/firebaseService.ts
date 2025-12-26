@@ -1,7 +1,8 @@
 
+
 import { db, TRIP_ID, isFirebaseConfigured } from '../firebaseConfig';
-import { collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, query, orderBy, limit, writeBatch, getDocs } from 'firebase/firestore';
-import { ItineraryItem, Expense, User, ChatMessage, MapMarker } from '../types';
+import { collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, query, orderBy, limit, writeBatch, getDocs, setDoc } from 'firebase/firestore';
+import { ItineraryItem, Expense, User, ChatMessage, MapMarker, TripSettings } from '../types';
 
 // ==========================================
 // HYBRID SERVICE IMPLEMENTATION
@@ -11,47 +12,78 @@ import { ItineraryItem, Expense, User, ChatMessage, MapMarker } from '../types';
 const useCloud = isFirebaseConfigured && db;
 
 // --- Observer System ---
-type Listener<T> = (data: T[]) => void;
-const observers: Record<string, Listener<any>[]> = {
+type Listener<T> = (data: T) => void;
+// Changed: Observers map now handles both arrays and single objects roughly
+const observers: Record<string, Function[]> = {
   itinerary: [],
   expenses: [],
   users: [],
   chat: [],
-  markers: []
+  markers: [],
+  settings: []
 };
 
-const notify = <T>(key: string, data: T[]) => {
+const notify = (key: string, data: any) => {
   if (observers[key]) {
     observers[key].forEach(callback => callback(data));
   }
 };
 
-const subscribeLocal = <T>(key: string, callback: Listener<T>) => {
+const subscribeLocal = <T>(key: string, callback: Listener<T>, defaultValue: any = []) => {
   if (!observers[key]) observers[key] = [];
   observers[key].push(callback);
-  const currentData = getLocal<T>(key);
+  const currentData = getLocal<T>(key, defaultValue);
   callback(currentData);
   return () => {
     observers[key] = observers[key].filter(cb => cb !== callback);
   };
 };
 
-const getLocal = <T>(key: string): T[] => {
+const getLocal = <T>(key: string, defaultValue: any = []): T => {
   try {
     const data = localStorage.getItem(`${TRIP_ID}_${key}`);
-    return data ? JSON.parse(data) : [];
+    return data ? JSON.parse(data) : defaultValue;
   } catch (e) {
-    return [];
+    return defaultValue;
   }
 };
 
-const setLocal = (key: string, data: any[]) => {
+const setLocal = (key: string, data: any) => {
   localStorage.setItem(`${TRIP_ID}_${key}`, JSON.stringify(data));
   notify(key, data);
 };
 
 const handleCloudError = (error: any) => {
   console.error("Firebase Error:", error);
+};
+
+// --- Trip Settings (NEW) ---
+export const subscribeToTripSettings = (callback: (settings: TripSettings | null) => void) => {
+  if (useCloud) {
+    // Settings are stored in a document 'trips/{TRIP_ID}/meta/settings' or just the trip doc itself.
+    // Let's use 'trips/{TRIP_ID}/metadata/general' to avoid collection name collisions
+    return onSnapshot(doc(db, 'trips', TRIP_ID, 'metadata', 'general'), (docSnap) => {
+        if (docSnap.exists()) {
+            callback(docSnap.data() as TripSettings);
+        } else {
+            callback(null);
+        }
+    });
+  } else {
+    // Local storage key: seoul-trip-2025-v1_settings
+    return subscribeLocal<TripSettings | null>('settings', callback, null);
+  }
+};
+
+export const updateTripSettings = async (settings: TripSettings) => {
+  if (useCloud) {
+    try { 
+        // Use setDoc with merge to create or update
+        await setDoc(doc(db, 'trips', TRIP_ID, 'metadata', 'general'), settings, { merge: true }); 
+    } catch (e) { handleCloudError(e); }
+  } else {
+    setLocal('settings', settings);
+  }
 };
 
 // --- Itinerary ---
@@ -63,7 +95,7 @@ export const subscribeToItinerary = (callback: (items: ItineraryItem[]) => void)
       callback(items);
     });
   } else {
-    return subscribeLocal<ItineraryItem>('itinerary', callback);
+    return subscribeLocal<ItineraryItem[]>('itinerary', callback);
   }
 };
 
@@ -71,7 +103,7 @@ export const addItineraryItem = async (item: Omit<ItineraryItem, 'id'>) => {
   if (useCloud) {
     try { await addDoc(collection(db, 'trips', TRIP_ID, 'itinerary'), item); } catch (e) { handleCloudError(e); throw e; }
   } else {
-    const items = getLocal<ItineraryItem>('itinerary');
+    const items = getLocal<ItineraryItem[]>('itinerary', []);
     const newItem = { ...item, id: Date.now().toString() } as ItineraryItem;
     setLocal('itinerary', [...items, newItem]);
   }
@@ -81,12 +113,22 @@ export const deleteItineraryItem = async (id: string) => {
   if (useCloud) {
     try { await deleteDoc(doc(db, 'trips', TRIP_ID, 'itinerary', id)); } catch (e) { handleCloudError(e); }
   } else {
-    const items = getLocal<ItineraryItem>('itinerary');
+    const items = getLocal<ItineraryItem[]>('itinerary', []);
     setLocal('itinerary', items.filter(i => i.id !== id));
   }
 };
 
-// --- Map Markers (NEW Persistent Collection) ---
+export const updateItineraryItem = async (id: string, updates: Partial<ItineraryItem>) => {
+    if (useCloud) {
+        try { await updateDoc(doc(db, 'trips', TRIP_ID, 'itinerary', id), updates); } catch (e) { handleCloudError(e); }
+    } else {
+        const items = getLocal<ItineraryItem[]>('itinerary', []);
+        const updated = items.map(i => i.id === id ? { ...i, ...updates } : i);
+        setLocal('itinerary', updated);
+    }
+}
+
+// --- Map Markers ---
 export const subscribeToMarkers = (callback: (markers: MapMarker[]) => void) => {
   if (useCloud) {
     const q = query(collection(db, 'trips', TRIP_ID, 'mapMarkers'), orderBy('timestamp', 'asc'));
@@ -95,7 +137,7 @@ export const subscribeToMarkers = (callback: (markers: MapMarker[]) => void) => 
       callback(items);
     });
   } else {
-    return subscribeLocal<MapMarker>('markers', callback);
+    return subscribeLocal<MapMarker[]>('markers', callback);
   }
 };
 
@@ -103,7 +145,7 @@ export const addMapMarker = async (marker: Omit<MapMarker, 'id'>) => {
   if (useCloud) {
     try { await addDoc(collection(db, 'trips', TRIP_ID, 'mapMarkers'), marker); } catch (e) { handleCloudError(e); }
   } else {
-    const items = getLocal<MapMarker>('markers');
+    const items = getLocal<MapMarker[]>('markers', []);
     const newItem = { ...marker, id: Date.now().toString() } as MapMarker;
     setLocal('markers', [...items, newItem]);
   }
@@ -132,7 +174,7 @@ export const subscribeToExpenses = (callback: (expenses: Expense[]) => void) => 
       callback(items);
     });
   } else {
-    return subscribeLocal<Expense>('expenses', callback);
+    return subscribeLocal<Expense[]>('expenses', callback);
   }
 };
 
@@ -140,7 +182,7 @@ export const addExpenseItem = async (item: Omit<Expense, 'id'>) => {
   if (useCloud) {
     try { await addDoc(collection(db, 'trips', TRIP_ID, 'expenses'), item); } catch (e) { handleCloudError(e); throw e; }
   } else {
-    const items = getLocal<Expense>('expenses');
+    const items = getLocal<Expense[]>('expenses', []);
     const newItem = { ...item, id: Date.now().toString() } as Expense;
     setLocal('expenses', [newItem, ...items]);
   }
@@ -150,7 +192,7 @@ export const deleteExpenseItem = async (id: string) => {
   if (useCloud) {
     try { await deleteDoc(doc(db, 'trips', TRIP_ID, 'expenses', id)); } catch (e) { handleCloudError(e); }
   } else {
-    const items = getLocal<Expense>('expenses');
+    const items = getLocal<Expense[]>('expenses', []);
     setLocal('expenses', items.filter(i => i.id !== id));
   }
 };
@@ -164,7 +206,7 @@ export const subscribeToUsers = (callback: (users: User[]) => void) => {
         callback(items);
       });
     } else {
-      return subscribeLocal<User>('users', callback);
+      return subscribeLocal<User[]>('users', callback);
     }
 };
 
@@ -172,7 +214,7 @@ export const addUser = async (name: string) => {
     if (useCloud) {
       try { await addDoc(collection(db, 'trips', TRIP_ID, 'users'), { name }); } catch (e) { handleCloudError(e); }
     } else {
-      const items = getLocal<User>('users');
+      const items = getLocal<User[]>('users', []);
       if (!items.find(u => u.name === name)) {
         const newItem = { id: Date.now().toString(), name };
         setLocal('users', [...items, newItem]);
@@ -184,7 +226,7 @@ export const updateUser = async (id: string, newName: string) => {
     if (useCloud) {
         try { await updateDoc(doc(db, 'trips', TRIP_ID, 'users', id), { name: newName }); } catch (e) { handleCloudError(e); }
     } else {
-        const items = getLocal<User>('users');
+        const items = getLocal<User[]>('users', []);
         const updated = items.map(u => u.id === id ? { ...u, name: newName } : u);
         setLocal('users', updated);
     }
@@ -194,7 +236,7 @@ export const deleteUser = async (id: string) => {
     if (useCloud) {
         try { await deleteDoc(doc(db, 'trips', TRIP_ID, 'users', id)); } catch (e) { handleCloudError(e); }
     } else {
-        const items = getLocal<User>('users');
+        const items = getLocal<User[]>('users', []);
         setLocal('users', items.filter(u => u.id !== id));
     }
 };
@@ -212,7 +254,7 @@ export const subscribeToChat = (callback: (messages: ChatMessage[]) => void) => 
           const sorted = [...data].sort((a, b) => a.timestamp - b.timestamp);
           callback(sorted);
       };
-      return subscribeLocal<ChatMessage>('chat', loadLocalChat);
+      return subscribeLocal<ChatMessage[]>('chat', loadLocalChat);
     }
 };
 
@@ -220,7 +262,7 @@ export const sendChatMessage = async (message: Omit<ChatMessage, 'id'>) => {
     if (useCloud) {
       try { await addDoc(collection(db, 'trips', TRIP_ID, 'chat'), message); } catch (e) { handleCloudError(e); }
     } else {
-      const items = getLocal<ChatMessage>('chat');
+      const items = getLocal<ChatMessage[]>('chat', []);
       const newItem = { ...message, id: Date.now().toString() } as ChatMessage;
       const updated = [...items, newItem].slice(-50);
       setLocal('chat', updated);

@@ -1,46 +1,71 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { AppTab, Expense, ItineraryItem, User } from './types';
+import { AppTab, Expense, ItineraryItem, User, TripSettings } from './types';
 import ItineraryView from './components/ItineraryView';
 import ExpenseView from './components/ExpenseView';
 import ChatView from './components/ChatView';
 import MapView from './components/MapView';
-import { Calendar, CreditCard, MessageCircle, MapPin, Users } from 'lucide-react';
-import { subscribeToExpenses, subscribeToItinerary, subscribeToUsers } from './services/firebaseService';
+import SetupWizard from './components/SetupWizard';
+import { Calendar, CreditCard, MessageCircle, MapPin, Users, Loader2 } from 'lucide-react';
+import { subscribeToExpenses, subscribeToItinerary, subscribeToUsers, subscribeToTripSettings } from './services/firebaseService';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>(AppTab.ITINERARY);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   
-  // Real-time Data from Firebase or LocalStorage
+  // Real-time Data
+  const [tripSettings, setTripSettings] = useState<TripSettings | null>(null);
   const [itineraryItems, setItineraryItems] = useState<ItineraryItem[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
-  // Handle Data Sync (Always Active)
+  // Handle Data Sync
   useEffect(() => {
+    // 1. Subscribe to Settings first
+    const unsubscribeSettings = subscribeToTripSettings((settings) => {
+        setTripSettings(settings);
+        setIsLoadingSettings(false);
+    });
+
+    // 2. Subscribe to other data
     const unsubscribeItinerary = subscribeToItinerary(setItineraryItems);
     const unsubscribeExpenses = subscribeToExpenses(setExpenses);
     const unsubscribeUsers = subscribeToUsers(setUsers);
 
     return () => {
+      unsubscribeSettings();
       unsubscribeItinerary();
       unsubscribeExpenses();
       unsubscribeUsers();
     };
   }, []);
 
+  if (isLoadingSettings) {
+      return (
+          <div className="h-full flex items-center justify-center bg-cream text-cocoa">
+              <Loader2 className="animate-spin" size={32}/>
+          </div>
+      );
+  }
+
+  // If no settings, show Setup Wizard
+  if (!tripSettings) {
+      return <SetupWizard onComplete={(s) => setTripSettings(s)} />;
+  }
+
   const renderContent = () => {
     switch (activeTab) {
       case AppTab.ITINERARY:
-        return <ItineraryView items={itineraryItems} />;
+        return <ItineraryView items={itineraryItems} settings={tripSettings} />;
       case AppTab.MAP:
-        return <MapView itineraryItems={itineraryItems} />;
+        return <MapView itineraryItems={itineraryItems} settings={tripSettings} />;
       case AppTab.EXPENSES:
-        return <ExpenseView expenses={expenses} users={users} />;
+        return <ExpenseView expenses={expenses} users={users} settings={tripSettings} />;
       case AppTab.AI_GUIDE:
-        return <ChatView />;
+        return <ChatView settings={tripSettings} />;
       default:
-        return <ItineraryView items={itineraryItems} />;
+        return <ItineraryView items={itineraryItems} settings={tripSettings} />;
     }
   };
 
@@ -50,8 +75,8 @@ const App: React.FC = () => {
       {/* Header - Fixed */}
       <header className="flex-none bg-cream/95 backdrop-blur-md z-20 px-6 pt-safe-top pb-3 border-b border-sand/30 flex justify-between items-center h-[calc(60px+env(safe-area-inset-top))]">
         <div className="pt-2">
-          <h1 className="text-2xl font-serif font-bold text-cocoa leading-none">
-            Seoul<span className="text-accent">Mate</span>.
+          <h1 className="text-xl font-serif font-bold text-cocoa leading-none truncate max-w-[200px]">
+            {tripSettings.destination}
           </h1>
           <div className="flex items-center gap-2 mt-1">
              <div className="flex -space-x-1">

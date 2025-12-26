@@ -1,10 +1,16 @@
+
+
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage, ItineraryItem } from '../types';
+import { ChatMessage, ItineraryItem, TripSettings } from '../types';
 import { Send, Map, Bot, User as UserIcon, Loader2, MapPin, CalendarPlus, Check } from 'lucide-react';
 import { chatWithTravelGuide, parseActivityFromText } from '../services/geminiService';
 import { subscribeToChat, sendChatMessage, addItineraryItem } from '../services/firebaseService';
 
-const ChatView: React.FC = () => {
+interface Props {
+    settings: TripSettings;
+}
+
+const ChatView: React.FC<Props> = ({ settings }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -57,8 +63,8 @@ const ChatView: React.FC = () => {
        }
     }
 
-    // 3. Call AI
-    const response = await chatWithTravelGuide(userMsg.text, location);
+    // 3. Call AI with Destination Context
+    const response = await chatWithTravelGuide(userMsg.text, settings.destination, location);
     
     // 4. Save Model Response
     await sendChatMessage({
@@ -74,8 +80,8 @@ const ChatView: React.FC = () => {
   const handleAddToItinerary = async (msg: ChatMessage) => {
       setImportingMsgId(msg.id);
       
-      // AI Parse
-      const parsedData = await parseActivityFromText(msg.text);
+      // AI Parse with Destination Context
+      const parsedData = await parseActivityFromText(msg.text, settings.destination);
       
       setImportModalData({
           ...parsedData,
@@ -105,7 +111,7 @@ const ChatView: React.FC = () => {
         {messages.length === 0 && (
             <div className="text-center text-gray-400 mt-10">
                 <Bot size={48} className="mx-auto mb-2 text-gray-300" />
-                <p>Start planning your trip...</p>
+                <p>Start planning your {settings.destination} trip...</p>
             </div>
         )}
         
@@ -184,7 +190,7 @@ const ChatView: React.FC = () => {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSend()}
-                placeholder="Ask Seoul Mate..."
+                placeholder={`Ask about ${settings.destination}...`}
                 className="flex-1 bg-gray-100 text-gray-900 placeholder-gray-400 rounded-full px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-sm"
             />
             <button 

@@ -1,4 +1,5 @@
 
+
 export interface WeatherInfo {
   temp: number;
   condition: string; // 'sunny', 'cloudy', 'rainy', 'snowy'
@@ -58,6 +59,17 @@ export interface MapMarker extends ParsedLocation {
   time?: string;
   day?: number;
   timestamp: number;
+}
+
+export interface TripSettings {
+  destination: string; // e.g. "Tokyo, Japan"
+  startDate: string;
+  endDate: string;
+  currencyCode: string; // e.g. "JPY"
+  currencyRate: number; // e.g. 0.21 (Foreign to Home currency)
+  language: string; // e.g. "Japanese"
+  lat: number; // Center lat of destination
+  lng: number; // Center lng of destination
 }
 
 export enum AppTab {
