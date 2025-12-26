@@ -13,8 +13,7 @@
     "@google/genai": "^1.32.0",
     "react-dom": "^19.2.1",
     "lucide-react": "^0.556.0",
-    "recharts": "^3.5.1",
-    "firebase": "^12.7.0"
+    "recharts": "^3.5.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
