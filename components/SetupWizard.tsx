@@ -36,6 +36,7 @@ const SetupWizard: React.FC<Props> = ({ onComplete }) => {
 
   const handleAnalyze = async () => {
     if (!inputDestination || !startDate || !endDate) return;
+
     setIsAnalyzing(true);
     
     const info = await detectDestinationInfo(inputDestination);
@@ -48,7 +49,7 @@ const SetupWizard: React.FC<Props> = ({ onComplete }) => {
         });
         setStep(1);
     } else {
-        alert("Could not detect destination details. Please try checking your spelling.");
+        alert("Could not detect destination details. Please check your spelling or internet connection.");
     }
     setIsAnalyzing(false);
   };

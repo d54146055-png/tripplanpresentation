@@ -1,14 +1,16 @@
 
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { ItineraryItem, ParsedLocation, TripSettings } from "../types";
 
-// Fixed: Strictly following guidelines for GoogleGenAI initialization
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to get AI instance with the latest key
+const getAI = () => {
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+};
 
 // NEW: Detect destination details for the Setup Wizard
 export const detectDestinationInfo = async (input: string): Promise<Partial<TripSettings> | null> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Analyze the travel destination "${input}". 
@@ -46,6 +48,7 @@ export const detectDestinationInfo = async (input: string): Promise<Partial<Trip
 
 export const generateItinerarySuggestion = async (day: number, destination: string, context: string, areas?: string): Promise<Omit<ItineraryItem, 'id'>[]> => {
   try {
+    const ai = getAI();
     const userRequest = areas 
       ? `USER REQUESTED LOCATIONS: "${areas}". YOU MUST INCLUDE THESE SPOTS. Arrange them in the most logical geographic order to minimize travel time.` 
       : 'Suggest a popular, logical route for a first-time visitor.';
@@ -104,6 +107,7 @@ export const generateItinerarySuggestion = async (day: number, destination: stri
 
 export const generateNextActivitySuggestion = async (dayItems: ItineraryItem[], destination: string): Promise<Omit<ItineraryItem, 'id'> | null> => {
   try {
+    const ai = getAI();
     const existingContext = dayItems.map(i => `${i.time}: ${i.activity} at ${i.location}`).join('\n');
     const lastItem = dayItems[dayItems.length - 1];
     const startTime = lastItem ? lastItem.time : "09:00";
@@ -152,6 +156,7 @@ export const generateNextActivitySuggestion = async (dayItems: ItineraryItem[], 
 export const getCoordinatesForLocation = async (locationName: string, destination: string): Promise<{lat: number, lng: number} | null> => {
     if (!locationName) return null;
     try {
+        const ai = getAI();
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: `Get the accurate latitude and longitude for "${locationName}" in ${destination}.
@@ -179,6 +184,7 @@ export const getCoordinatesForLocation = async (locationName: string, destinatio
 
 export const parseLocationsFromText = async (text: string, destination: string): Promise<ParsedLocation[]> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Extract all specific travel locations/places in ${destination} mentioned in this text. 
@@ -220,6 +226,7 @@ export interface RouteOption {
 
 export const calculateRoute = async (from: string, to: string, destination: string): Promise<RouteOption[]> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Calculate 3 distinct travel routes from "${from}" to "${to}" in ${destination}.
@@ -253,6 +260,7 @@ export const calculateRoute = async (from: string, to: string, destination: stri
 
 export const parseActivityFromText = async (text: string, destination: string): Promise<Partial<ItineraryItem>> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Analyze this text and extract a single travel itinerary activity item for a trip to ${destination}.
@@ -284,6 +292,7 @@ export const chatWithTravelGuide = async (
   location?: { lat: number; lng: number }
 ) => {
   try {
+    const ai = getAI();
     const prompt = location 
       ? `(User is currently at ${location.lat}, ${location.lng}) ${message}`
       : message;
