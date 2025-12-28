@@ -4,7 +4,7 @@ import { ItineraryItem, ParsedLocation, TripSettings } from "../types";
 
 // Helper to get AI instance with the latest key
 const getAI = () => {
-  const apiKey = process.env.AIzaSyCZatac9npzL1l81cEDIIkvU3StLv-yDa0;
+  const apiKey = process.env.API_KEY;
   if (!apiKey) {
     console.error("API_KEY is missing. Ensure it is set in your Vercel Environment Variables.");
     // Return a dummy instance or let it fail gracefully later, but the error above is key for debugging.
