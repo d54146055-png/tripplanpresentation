@@ -3,13 +3,14 @@ import React, { useState, useRef } from 'react';
 import { TripSettings } from '../types';
 import { detectDestinationInfo } from '../services/geminiService';
 import { updateTripSettings, importTripData } from '../services/storageService';
-import { Plane, Calendar, Globe, Coins, CheckCircle, Loader2, ArrowRight, MapPin, Upload } from 'lucide-react';
+import { Plane, Calendar, Globe, Coins, CheckCircle, Loader2, ArrowRight, MapPin, Upload, X } from 'lucide-react';
 
 interface Props {
   onComplete: (settings: TripSettings) => void;
+  onCancel?: () => void; // Added cancel prop
 }
 
-const SetupWizard: React.FC<Props> = ({ onComplete }) => {
+const SetupWizard: React.FC<Props> = ({ onComplete, onCancel }) => {
   const [step, setStep] = useState(0); // 0: Destination, 1: Confirmation
   
   const [inputDestination, setInputDestination] = useState('');
@@ -29,6 +30,9 @@ const SetupWizard: React.FC<Props> = ({ onComplete }) => {
     if (e.target.files && e.target.files[0]) {
         const success = await importTripData(e.target.files[0]);
         if (success) {
+            // Import logic handles page reload or state update internally in storageService usually, 
+            // but in SetupWizard specifically, we might want to just let the parent app handle the re-render.
+            // For now, reload is safe to force sync.
             window.location.reload();
         }
     }
@@ -67,6 +71,16 @@ const SetupWizard: React.FC<Props> = ({ onComplete }) => {
       {/* Decorative Background */}
       <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[30%] bg-sand rounded-full opacity-20 blur-3xl"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[30%] bg-accent rounded-full opacity-10 blur-3xl"></div>
+      
+      {/* Cancel Button (Visible only if onCancel provided) */}
+      {onCancel && (
+          <button 
+            onClick={onCancel}
+            className="absolute top-6 left-6 p-2 bg-white/50 backdrop-blur-sm rounded-full text-gray-500 hover:bg-white z-50 transition-colors"
+          >
+              <X size={24} />
+          </button>
+      )}
 
       {/* Step 0: Destination Input (Now the default start screen) */}
       {step === 0 && (
@@ -75,8 +89,8 @@ const SetupWizard: React.FC<Props> = ({ onComplete }) => {
                 <div className="w-20 h-20 bg-cocoa text-white rounded-3xl mx-auto flex items-center justify-center shadow-xl mb-4 transform -rotate-6">
                     <Plane size={40} />
                 </div>
-                <h1 className="text-3xl font-serif font-bold mb-2">Start Your Journey</h1>
-                <p className="text-latte text-sm">Where are you going?</p>
+                <h1 className="text-3xl font-serif font-bold mb-2">New Trip</h1>
+                <p className="text-latte text-sm">Where is your next adventure?</p>
             </div>
 
             <div className="space-y-6 bg-white p-6 rounded-[2rem] shadow-xl border border-sand/50">

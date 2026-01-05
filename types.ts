@@ -1,5 +1,4 @@
 
-
 export interface WeatherInfo {
   temp: number;
   condition: string; // 'sunny', 'cloudy', 'rainy', 'snowy'
@@ -70,6 +69,13 @@ export interface TripSettings {
   language: string; // e.g. "Japanese"
   lat: number; // Center lat of destination
   lng: number; // Center lng of destination
+}
+
+export interface TripMetadata {
+  id: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
 }
 
 export enum AppTab {

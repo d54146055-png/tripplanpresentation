@@ -4,7 +4,7 @@ import { ItineraryItem, ParsedLocation, TripSettings } from "../types";
 
 // Helper to get AI instance with the latest key
 const getAI = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.API_KEY;
   if (!apiKey) {
     console.error("API_KEY is missing. Ensure it is set in your Vercel Environment Variables.");
     // Return a dummy instance or let it fail gracefully later, but the error above is key for debugging.
@@ -17,7 +17,7 @@ export const detectDestinationInfo = async (input: string): Promise<Partial<Trip
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Analyze the travel destination "${input}". 
       Return a JSON object with:
       - standardized destination name (City, Country)
@@ -59,7 +59,7 @@ export const generateItinerarySuggestion = async (day: number, destination: stri
       : 'Suggest a popular, logical route for a first-time visitor.';
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Plan a realistic 1-day itinerary for Day ${day} of a trip to ${destination}.
       ${userRequest}
       Context/Vibe: ${context}.
@@ -119,7 +119,7 @@ export const generateNextActivitySuggestion = async (dayItems: ItineraryItem[], 
     const day = lastItem ? lastItem.day : 1;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Based on this existing itinerary for a day in ${destination}:
       ${existingContext}
       
@@ -163,7 +163,7 @@ export const getCoordinatesForLocation = async (locationName: string, destinatio
     try {
         const ai = getAI();
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: `Get the accurate latitude and longitude for "${locationName}" in ${destination}.
             Return JSON with lat and lng numbers. If unknown, return null.`,
             config: {
@@ -191,7 +191,7 @@ export const parseLocationsFromText = async (text: string, destination: string):
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Extract all specific travel locations/places in ${destination} mentioned in this text. 
       IMPORTANT: Provide accurate Latitude and Longitude for each.
       Return a JSON array. 
@@ -233,7 +233,7 @@ export const calculateRoute = async (from: string, to: string, destination: stri
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Calculate 3 distinct travel routes from "${from}" to "${to}" in ${destination}.
       Options should vary (e.g., Fastest, Cheapest, Walking).
       Format the duration smartly.
@@ -267,7 +267,7 @@ export const parseActivityFromText = async (text: string, destination: string): 
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Analyze this text and extract a single travel itinerary activity item for a trip to ${destination}.
       Text: "${text}"
       Return JSON.`,
@@ -303,7 +303,7 @@ export const chatWithTravelGuide = async (
       : message;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
         systemInstruction: `You are a savvy local guide for ${destination}. 
